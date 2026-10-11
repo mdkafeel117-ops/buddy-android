@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Buddy</title>
+<style>
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:linear-gradient(160deg,#1e1b4b,#4c1d95 55%,#be185d);font-family:system-ui,sans-serif;color:#fff}
+canvas{position:fixed;left:0;top:0;width:100%;height:100%;display:block}
+#top{position:fixed;top:0;right:0;padding:12px;display:flex;gap:8px;z-index:5}
+.ib{width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.2);color:#fff;font-size:20px}
+#chat{position:fixed;left:0;right:0;bottom:0;padding:12px;z-index:5}
+#me{font-size:13px;opacity:.8;margin:0 6px 6px;min-height:16px;text-align:right}
+#bubble{background:rgba(255,255,255,.95);color:#1f1147;border-radius:18px;padding:12px 14px;font-size:16px;line-height:1.4;max-height:28vh;overflow:auto;margin-bottom:10px}
+#bar{display:flex;gap:8px}
+#inp{flex:1;min-width:0;border:0;border-radius:24px;padding:12px 16px;font-size:16px;background:rgba(255,255,255,.22);color:#fff;outline:0}
+#inp::placeholder{color:rgba(255,255,255,.7)}
+.rb{width:48px;height:48px;border-radius:50%;border:0;background:#22d3ee;color:#083344;font-size:20px;font-weight:700}
+#games{position:fixed;inset:0;background:rgba(15,10,40,.85);z-index:10;display:none;align-items:center;justify-content:center}
+#gcard{background:#312e81;border-radius:20px;padding:18px;width:min(92vw,360px);text-align:center}
+#gcard h2{margin-bottom:10px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button,.gb{flex:1;border:0;border-radius:12px;padding:10px;background:#7c3aed;color:#fff;font-size:15px}
+#grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.cell{aspect-ratio:1;border:0;border-radius:12px;background:rgba(255,255,255,.15);color:#fff;font-size:34px;font-weight:700}
+#gmsg{min-height:44px;margin:8px 0}
+#rps{display:flex;gap:8px;margin:12px 0}
+.rps-b{font-size:30px;padding:14px 0}
+.close{margin-top:6px;background:#be185d}
+</style>
+</head>
+<body>
+<div id="top">
+  <button class="ib" id="gbtn">🎮</button>
+  <button class="ib" id="sbtn">⚙</button>
+</div>
+<div id="chat">
+  <div id="me"></div>
+  <div id="bubble">Hii! Main Buddy hu 👋 Mujhse baat karo, game khelo, ya bolo koi kaam!</div>
+  <div id="bar">
+    <button class="rb" id="mic">🎤</button>
+    <input id="inp" placeholder="Buddy se baat karo..." autocomplete="off">
+    <button class="rb" id="go">➤</button>
+  </div>
+</div>
+
+<div id="games"><div id="gcard">
+  <h2>🎮 Buddy ke saath khelo</h2>
+  <div class="tabs"><button id="t1">❌⭕ Tic-Tac-Toe</button><button id="t2">✊✋✌️ Patthar-Kagaz</button></div>
+  <div id="garea"></div>
+  <div id="gmsg"></div>
+  <button class="gb close" id="gclose">Band karo</button>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const bubble=$('bubble'),me=$('me'),inp=$('inp');
+let talking=false,talkTimer=null;
+const hasA=()=>!!window.Android;
+
+function setTalking(on,ms){talking=on;clearTimeout(talkTimer);if(on&&ms)talkTimer=setTimeout(()=>{talking=false},ms)}
+function say(t){bubble.textContent=t}
+function speak(t){say(t);setTalking(true,t.length*80+800);if(hasA())Android.speak(t)}
+function onBuddyReply(t){say(t);setTalking(true,t.length*90+1500)}
+function onUserSaid(t){me.textContent='Tum: '+t;say('🤔 soch raha hu...')}
+let wave=0,jumpReq=false;
+
+function send(){
+  const v=inp.value.trim(); if(!v)return; inp.value='';
+  onUserSaid(v);
+  if(hasA())Android.send(v); else onBuddyReply('Demo mode: Android bridge nahi mila');
+}
+$('go').onclick=send;
+inp.addEventListener('keydown',e=>{if(e.key==='Enter')send()});
+$('mic').onclick=()=>{ if(hasA())Android.listen() };
+$('sbtn').onclick=()=>{ if(hasA())Android.settings() };
+
+/* ---------- Games ---------- */
+const lines=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+let board,over,score={me:0,bud:0};
+function winner(b){for(const[a,c,d]of lines)if(b[a]&&b[a]===b[c]&&b[a]===b[d])return b[a];return b.every(x=>x)?'T':null}
+function findMove(b,p){for(const l of lines){const v=l.map(i=>b[i]);if(v.filter(x=>x===p).length===2&&v.includes(null))return l[v.indexOf(null)]}return -1}
+function gmsg(t){$('gmsg').textContent=t;speak(t)}
+function startTTT(){
+  board=Array(9).fill(null);over=false;
+  $('garea').innerHTML='<div id="grid"></div>';
+  renderTTT(); gmsg('Tum X ho, main O. Pehle tum chalo!');
+}
+function renderTTT(){
+  const g=$('grid');g.innerHTML='';
+  board.forEach((v,i)=>{const b=document.createElement('button');b.className='cell';b.textContent=v==='X'?'❌':v==='O'?'⭕':'';b.onclick=()=>playTTT(i);g.appendChild(b)});
+}
+function endCheck(){
+  const w=winner(board);
+  if(!w)return false;
+  over=true;
+  gmsg(w==='X'?'Wah! Tum jeet gaye 🎉 agli baar main jeetunga!':w==='O'?'Yay! Main jeet gaya 😎':'Draw! Badhiya match tha 🤝');
+  return true;
+}
+function playTTT(i){
+  if(over||board[i])return;
+  board[i]='X'; renderTTT();
+  if(endCheck())return;
+  let m=Math.random()<.25?-1:findMove(board,'O');
+  if(m<0)m=findMove(board,'X');
+  if(m<0&&!board[4])m=4;
+  if(m<0){const f=board.map((v,k)=>v?-1:k).filter(k=>k>=0);m=f[Math.floor(Math.random()*f.length)]}
+  board[m]='O'; renderTTT(); endCheck();
+}
+const RPS=['✊ Patthar','✋ Kagaz','✌️ Kainchi'];
+function startRPS(){
+  $('garea').innerHTML='<div id="rps">'+RPS.map((r,i)=>'<button class="gb rps-b" data-i="'+i+'">'+r.split(' ')[0]+'</button>').join('')+'</div><div>Score → Tum: <b id="s1">'+score.me+'</b> | Buddy: <b id="s2">'+score.bud+'</b></div>';
+  document.querySelectorAll('.rps-b').forEach(b=>b.onclick=()=>playRPS(+b.dataset.i));
+  gmsg('Chuno: patthar, kagaz ya kainchi!');
+}
+function playRPS(p){
+  const b=Math.floor(Math.random()*3), r=(p-b+3)%3;
+  let t=RPS[p]+' vs '+RPS[b]+' — ';
+  if(r===0)t+='Barabar! 🤝'; else if(r===1){score.me++;t+='Tum jeete 🎉'} else {score.bud++;t+='Main jeeta 😎'}
+  $('s1').textContent=score.me;$('s2').textContent=score.bud;gmsg(t);
+}
+$('gbtn').onclick=()=>{$('games').style.display='flex';startTTT()};
+$('gclose').onclick=()=>{$('games').style.display='none'};
+$('t1').onclick=startTTT; $('t2').onclick=startRPS;
+
+/* ---------- 3D Buddy ---------- */
+const CDN='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+function loadScript(src,ok,fail){const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=fail;document.head.appendChild(s)}
+loadScript('three.min.js',boot,()=>loadScript(CDN,boot,()=>{say('3D load nahi hua. Internet check karo ya assets me three.min.js daalo.')}));
+
+function boot(){
+  const scene=new THREE.Scene();
+  const cam=new THREE.PerspectiveCamera(38,innerWidth/innerHeight,.1,100);
+  cam.position.set(0,.6,10); cam.lookAt(0,.1,0);
+  const ren=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  ren.setPixelRatio(Math.min(devicePixelRatio,2)); ren.setSize(innerWidth,innerHeight);
+  document.body.prepend(ren.domElement);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x6d28d9,.9));
+  const dl=new THREE.DirectionalLight(0xffffff,.9); dl.position.set(3,6,6); scene.add(dl);
+
+  const M=c=>new THREE.MeshStandardMaterial({color:c,roughness:.45,metalness:.05});
+  const S=(r,c,sx=1,sy=1,sz=1)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(r,32,24),M(c));m.scale.set(sx,sy,sz);return m};
+
+  const buddy=new THREE.Group(); buddy.scale.setScalar(.9); scene.add(buddy);
+  const body=S(1,0x7c3aed,1,1.1,.95); buddy.add(body);
+  const belly=S(.7,0xddd6fe,.85,.9,.35); belly.position.set(0,-.1,.8); buddy.add(belly);
+
+  const head=new THREE.Group(); head.position.y=1.75; buddy.add(head);
+  head.add(S(.95,0xfde68a,1.05,.95,.95));
+  const eyes=[];
+  [-1,1].forEach(s=>{
+    const g=new THREE.Group(); g.position.set(s*.38,.12,.78);
+    const w=S(.24,0xffffff,1,1.15,.6), p=S(.12,0x111827,1,1,.6); p.position.z=.12;
+    g.add(w,p); head.add(g); eyes.push(g);
+    const ch=S(.14,0xfb7185,1,.7,.3); ch.position.set(s*.62,-.18,.7); head.add(ch);
+  });
+  const mouth=S(.2,0x7f1d1d,1,.25,.4); mouth.position.set(0,-.3,.88); head.add(mouth);
+  const ant=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,.5,8),M(0x94a3b8)); ant.position.y=1; head.add(ant);
+  const bulb=S(.12,0x22d3ee); bulb.material.emissive=new THREE.Color(0x22d3ee); bulb.position.y=1.3; head.add(bulb);
+
+  const arms=[-1,1].map(s=>{
+    const g=new THREE.Group(); g.position.set(s*1,.4,0);
+    const a=S(.28,0x6d28d9,.8,1.5,.8); a.position.y=-.45; g.add(a); buddy.add(g); return g;
+  });
+  [-1,1].forEach(s=>{const f=S(.36,0x4c1d95,1.1,.6,1.3); f.position.set(s*.5,-1.15,.25); buddy.add(f)});
+  const sh=new THREE.Mesh(new THREE.CircleGeometry(1.2,32),new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.25}));
+  sh.rotation.x=-Math.PI/2; sh.position.y=-1.4; scene.add(sh);
+
+  let t=0,y=0,vy=0,blink=0,nextBlink=2,mx=0,my=0;
+  const clock=new THREE.Clock();
+  const lines=['Hehe, gudgudi! 😆','Arre, kya hua? 😄','Main yahin hu, bolo!','Wooo! Mazaa aaya! 🎉'];
+
+  function loop(){
+    requestAnimationFrame(loop);
+    const dt=Math.min(clock.getDelta(),.05); t+=dt;
+    vy-=22*dt; y+=vy*dt; if(y<0){y=0;vy=0}
+    buddy.position.y=y+Math.sin(t*2)*.06;
+    sh.scale.setScalar(Math.max(.5,1-y*.15));
+    buddy.rotation.y=Math.sin(t*.6)*.15;
+    head.rotation.y+=(mx*.5-head.rotation.y)*.1;
+    head.rotation.x+=(-my*.3-head.rotation.x)*.1;
+    head.rotation.z=Math.sin(t*1.3)*.05;
+    nextBlink-=dt; if(nextBlink<0){blink=.15;nextBlink=2+Math.random()*3}
+    if(blink>0)blink-=dt;
+    eyes.forEach(e=>e.scale.y=blink>0?.1:1);
+    if(talking)mouth.scale.y=.25+Math.abs(Math.sin(t*14))*.9; else mouth.scale.y+=(.25-mouth.scale.y)*.2;
+    bulb.scale.setScalar(1+(talking?Math.abs(Math.sin(t*10))*.5:Math.sin(t*3)*.1));
+    const g=talking?Math.sin(t*6)*.15:0;
+    arms[0].rotation.z=-(.15+Math.sin(t*2)*.05+g);
+    if(wave>0){wave-=dt;arms[1].rotation.z=2.6+Math.sin(t*12)*.4}
+    else arms[1].rotation.z=.15+Math.sin(t*2)*.05+g;
+    ren.render(scene,cam);
+  }
+  loop();
+
+  ren.domElement.addEventListener('pointerdown',()=>{
+    vy=7; wave=1.5;
+    speak(lines[Math.floor(Math.random()*lines.length)]);
+  });
+  ren.domElement.addEventListener('pointermove',e=>{
+    mx=(e.clientX/innerWidth-.5)*2; my=(e.clientY/innerHeight-.5)*2;
+  });
+  addEventListener('resize',()=>{
+    cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix(); ren.setSize(innerWidth,innerHeight);
+  });
+}
+</script>
+</body>
+</html>
